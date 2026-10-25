@@ -164,7 +164,7 @@ export default function PromotionalModal({ forceOpen = false, previewData = null
         )}
 
         {/* Media / Video Player (MP4 / WebM / Reel / YouTube / Vimeo) */}
-        {promo.contentType === 'video' && (videoBlobUrl || promo.videoUrl) && (
+        {promo.contentType === 'video' && (videoBlobUrl || (promo.videoUrl && !promo.videoUrl.startsWith('idb:'))) && (
           <div className="promo-media-container promo-video-container">
             {(promo.videoUrl?.includes('youtube') || promo.videoUrl?.includes('youtu.be') || promo.videoUrl?.includes('vimeo')) ? (
               <div className="promo-video-iframe-wrapper">
@@ -180,7 +180,7 @@ export default function PromotionalModal({ forceOpen = false, previewData = null
             ) : (
               <div className="promo-video-wrapper">
                 <video
-                  src={videoBlobUrl || promo.videoUrl}
+                  src={videoBlobUrl || (!promo.videoUrl?.startsWith('idb:') ? promo.videoUrl : '')}
                   autoPlay={promo.videoAutoplay !== false}
                   muted={isMuted}
                   loop={promo.videoLoop !== false}

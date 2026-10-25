@@ -50,7 +50,7 @@ import {
   deleteMediaItem,
   formatVideoEmbedUrl
 } from '../lib/settings';
-import { fetchInquiries, deleteInquiry, isSupabaseConfigured } from '../lib/supabase';
+import { fetchInquiries, deleteInquiry, isSupabaseConfigured, uploadMediaToSupabase } from '../lib/supabase';
 import PromotionalModal from '../components/PromotionalModal';
 
 export default function AdminPage() {
@@ -75,6 +75,7 @@ export default function AdminPage() {
   const fileInputRef = useRef(null);
   const videoFileInputRef = useRef(null);
   const [adminVideoPreviewUrl, setAdminVideoPreviewUrl] = useState('');
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
 
   // Resolve video preview if stored in IndexedDB or direct link
   useEffect(() => {
@@ -257,24 +258,38 @@ export default function AdminPage() {
     }
 
     if (file.size > 50 * 1024 * 1024) {
-      alert('Video file is larger than 50MB. Please use a compressed clip or paste an external video link.');
+      alert('Video file is larger than 50MB. Please use a compressed clip or paste a YouTube / direct MP4 link.');
       return;
     }
 
-    await saveMediaItem('promo_video_blob', file);
-    const blobUrl = URL.createObjectURL(file);
-    setAdminVideoPreviewUrl(blobUrl);
+    setIsUploadingVideo(true);
+    let finalVideoUrl = '';
+
+    // 1. Try uploading to Supabase Storage so it is accessible from all browsers (Edge, Chrome, phones)
+    const cloudUrl = await uploadMediaToSupabase(file, 'promo-media');
+
+    if (cloudUrl) {
+      finalVideoUrl = cloudUrl;
+      setAdminVideoPreviewUrl(cloudUrl);
+    } else {
+      // 2. Fallback to local storage for local testing
+      await saveMediaItem('promo_video_blob', file);
+      const blobUrl = URL.createObjectURL(file);
+      setAdminVideoPreviewUrl(blobUrl);
+      finalVideoUrl = 'idb:promo_video_blob';
+    }
 
     const updated = {
       ...settings,
       promoModal: {
         ...settings.promoModal,
-        videoUrl: 'idb:promo_video_blob',
+        videoUrl: finalVideoUrl,
         contentType: 'video'
       }
     };
     setSettings(updated);
     saveClinicSettings(updated);
+    setIsUploadingVideo(false);
     setSaveToast(true);
     setTimeout(() => setSaveToast(false), 3000);
   };
@@ -1059,13 +1074,14 @@ export default function AdminPage() {
                         ) : (
                           <div 
                             className="upload-dropzone"
-                            onClick={() => videoFileInputRef.current?.click()}
+                            onClick={() => !isUploadingVideo && videoFileInputRef.current?.click()}
+                            style={{ opacity: isUploadingVideo ? 0.7 : 1, cursor: isUploadingVideo ? 'wait' : 'pointer' }}
                           >
                             <Film size={34} className="upload-icon" />
-                            <strong>Click to Upload Promotional Video File</strong>
-                            <p>Supports MP4, WebM, MOV (Canva Video, Instagram Reel, Promo Clip - Max 50MB)</p>
-                            <button type="button" className="btn-browse-file">
-                              Choose Video File
+                            <strong>{isUploadingVideo ? 'Uploading Video to Cloud...' : 'Click to Upload Promotional Video File'}</strong>
+                            <p>{isUploadingVideo ? 'Please wait while your video is uploaded to cloud storage...' : 'Supports MP4, WebM, MOV (Canva Video, Instagram Reel, Promo Clip - Max 50MB)'}</p>
+                            <button type="button" className="btn-browse-file" disabled={isUploadingVideo}>
+                              {isUploadingVideo ? 'Uploading...' : 'Choose Video File'}
                             </button>
                           </div>
                         )}
@@ -1080,10 +1096,12 @@ export default function AdminPage() {
 
                         {/* Or Video URL input */}
                         <div className="url-alternative">
-                          <label className="field-label-sm">Or Enter Direct Video / YouTube / Vimeo URL:</label>
+                          <label className="field-label-sm">
+                            <strong>Recommended for 100% Cross-Browser Support (Edge, Chrome, Safari, Mobile):</strong>
+                          </label>
                           <input 
                             type="text"
-                            placeholder="https://example.com/promo.mp4 or YouTube / Vimeo link"
+                            placeholder="Paste direct video URL, YouTube link (e.g. https://youtu.be/...), or Vimeo"
                             value={settings.promoModal.videoUrl?.startsWith('idb:') ? '' : (settings.promoModal.videoUrl || '')}
                             onChange={(e) => {
                               const updated = {
@@ -1095,6 +1113,9 @@ export default function AdminPage() {
                             }}
                             className="form-input"
                           />
+                          <p style={{ fontSize: '0.8rem', color: 'var(--neutral-500)', marginTop: '6px' }}>
+                            💡 <em>Pasting a YouTube, Vimeo, or direct MP4 link streams instantly on Microsoft Edge, Safari, Chrome, and phones without device cache limits.</em>
+                          </p>
                         </div>
 
                         {/* Video Playback Options */}

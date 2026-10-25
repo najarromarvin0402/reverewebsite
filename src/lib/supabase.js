@@ -170,3 +170,37 @@ export async function saveClinicSettingsToDb(settings) {
     throw e;
   }
 }
+
+/**
+ * Upload a media file (video or image) to Supabase Storage bucket
+ * Returns public URL if successful, or null
+ */
+export async function uploadMediaToSupabase(file, bucketName = 'promo-media') {
+  if (!supabase || !isSupabaseConfigured) return null;
+  try {
+    const ext = file.name ? file.name.split('.').pop().toLowerCase() : 'mp4';
+    const cleanName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+    const filePath = `uploads/${cleanName}`;
+
+    const { data, error } = await supabase.storage
+      .from(bucketName)
+      .upload(filePath, file, {
+        cacheControl: '31536000',
+        upsert: true
+      });
+
+    if (error) {
+      console.warn(`Supabase Storage upload to bucket '${bucketName}' notice:`, error.message);
+      return null;
+    }
+
+    const { data: publicData } = supabase.storage
+      .from(bucketName)
+      .getPublicUrl(data.path);
+
+    return publicData?.publicUrl || null;
+  } catch (err) {
+    console.warn('Storage upload error:', err);
+    return null;
+  }
+}

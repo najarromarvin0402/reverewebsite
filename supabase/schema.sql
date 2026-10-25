@@ -89,3 +89,23 @@ CREATE POLICY "Allow public delete on contact_inquiries"
 ON contact_inquiries FOR DELETE 
 TO anon, authenticated 
 USING (true);
+
+-- ===================================================
+-- 3. PROMOTIONAL MEDIA STORAGE BUCKET (Videos & Flyers)
+-- ===================================================
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('promo-media', 'promo-media', true)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "Allow public read on promo-media" ON storage.objects;
+DROP POLICY IF EXISTS "Allow public upload on promo-media" ON storage.objects;
+
+CREATE POLICY "Allow public read on promo-media" 
+ON storage.objects FOR SELECT 
+TO anon, authenticated 
+USING (bucket_id = 'promo-media');
+
+CREATE POLICY "Allow public upload on promo-media" 
+ON storage.objects FOR INSERT 
+TO anon, authenticated 
+WITH CHECK (bucket_id = 'promo-media');
