@@ -33,12 +33,14 @@ import {
   Film,
   Video as VideoIcon,
   Volume2,
-  VolumeX
+  VolumeX,
+  Database
 } from 'lucide-react';
 import { 
   getClinicSettings, 
   saveClinicSettings, 
   resetClinicSettings, 
+  syncClinicSettingsFromDb,
   cleanPhoneForWhatsApp, 
   getWhatsAppUrl,
   getPromoModalStatus,
@@ -48,6 +50,7 @@ import {
   deleteMediaItem,
   formatVideoEmbedUrl
 } from '../lib/settings';
+import { fetchInquiries, deleteInquiry, isSupabaseConfigured } from '../lib/supabase';
 import PromotionalModal from '../components/PromotionalModal';
 
 export default function AdminPage() {
@@ -106,14 +109,25 @@ export default function AdminPage() {
     }
 
     loadInquiries();
+
+    // Fetch latest settings from Supabase database
+    syncClinicSettingsFromDb().then(updated => {
+      if (updated) setSettings(updated);
+    });
+
+    const handleSettingsSync = (e) => {
+      if (e?.detail) setSettings(e.detail);
+    };
+    window.addEventListener('revere-settings-updated', handleSettingsSync);
+    return () => window.removeEventListener('revere-settings-updated', handleSettingsSync);
   }, []);
 
-  const loadInquiries = () => {
+  const loadInquiries = async () => {
     try {
-      const stored = JSON.parse(localStorage.getItem('revere_inquiries') || '[]');
-      setInquiries(stored.reverse());
+      const list = await fetchInquiries();
+      setInquiries(list);
     } catch (e) {
-      setInquiries([]);
+      console.warn('Error loading inquiries:', e);
     }
   };
 
@@ -330,13 +344,13 @@ export default function AdminPage() {
     }
   };
 
-  const handleDeleteInquiry = (id) => {
+  const handleDeleteInquiry = async (id) => {
     try {
       const updated = inquiries.filter(item => item.id !== id);
       setInquiries(updated);
-      localStorage.setItem('revere_inquiries', JSON.stringify(updated.reverse()));
+      await deleteInquiry(id);
     } catch (e) {
-      console.error(e);
+      console.error('Error deleting inquiry:', e);
     }
   };
 
@@ -525,6 +539,15 @@ export default function AdminPage() {
             <span className="admin-badge">
               <ShieldCheck size={14} /> Clinic Admin Portal
             </span>
+            {isSupabaseConfigured ? (
+              <span className="admin-badge" style={{ background: '#ecfdf5', color: '#065f46', borderColor: '#a7f3d0' }}>
+                <Database size={14} /> Cloud Database Active
+              </span>
+            ) : (
+              <span className="admin-badge" style={{ background: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}>
+                <Database size={14} /> Local Cache Mode
+              </span>
+            )}
             <h1 className="admin-heading">Revere Wellness Control Center</h1>
           </div>
           <div className="admin-top-actions">
@@ -1538,14 +1561,25 @@ export default function AdminPage() {
           {activeTab === 'inbox' && (
             <div className="tab-content-wrapper">
               <div className="admin-card glass-card">
-                <div className="card-header">
-                  <div className="header-icon-box mail-box">
-                    <Mail size={20} />
+                <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div className="header-icon-box mail-box">
+                      <Mail size={20} />
+                    </div>
+                    <div>
+                      <h3 className="card-title">Website Inquiries Inbox</h3>
+                      <p className="card-subtitle">Messages left by visitors who submitted contact forms or callback requests</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="card-title">Website Inquiries Inbox</h3>
-                    <p className="card-subtitle">Messages left by visitors who don't have WhatsApp</p>
-                  </div>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    onClick={loadInquiries}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '0.84rem' }}
+                  >
+                    <RotateCcw size={14} />
+                    <span>Refresh Inbox</span>
+                  </button>
                 </div>
 
                 {inquiries.length === 0 ? (

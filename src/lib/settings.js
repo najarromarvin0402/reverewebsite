@@ -1,5 +1,6 @@
 // Clinic Settings & Dynamic WhatsApp Configuration Service
 // Supports local management and real-time updates across the app
+import { fetchClinicSettingsFromDb, saveClinicSettingsToDb } from './supabase';
 
 export const DEFAULT_SETTINGS = {
   // WhatsApp settings
@@ -227,7 +228,43 @@ export function getClinicSettings() {
 }
 
 /**
- * Save clinic settings and notify active components with deep merge & storage safety
+ * Fetch remote settings from Supabase and synchronize with localStorage & UI
+ */
+export async function syncClinicSettingsFromDb() {
+  if (typeof window === 'undefined') return DEFAULT_SETTINGS;
+
+  try {
+    const remote = await fetchClinicSettingsFromDb();
+    if (!remote) return getClinicSettings();
+
+    const merged = {
+      ...DEFAULT_SETTINGS,
+      ...remote,
+      promoModal: {
+        ...DEFAULT_SETTINGS.promoModal,
+        ...(remote.promoModal || {})
+      }
+    };
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+    window.dispatchEvent(new CustomEvent('revere-settings-updated', { detail: merged }));
+    return merged;
+  } catch (e) {
+    console.warn('Could not sync clinic settings from database:', e);
+    return getClinicSettings();
+  }
+}
+
+// Automatically sync settings from database when running in browser
+if (typeof window !== 'undefined') {
+  // Run on next tick after initial hydration
+  setTimeout(() => {
+    syncClinicSettingsFromDb().catch(() => {});
+  }, 100);
+}
+
+/**
+ * Save clinic settings to both localStorage (instant) and Supabase (cloud persistence)
  */
 export function saveClinicSettings(newSettings) {
   if (typeof window === 'undefined') return newSettings;
@@ -257,6 +294,12 @@ export function saveClinicSettings(newSettings) {
 
     // Dispatch event so ChatBotWidget and PromotionalModal update immediately
     window.dispatchEvent(new CustomEvent('revere-settings-updated', { detail: merged }));
+
+    // Persist to Supabase in the background
+    saveClinicSettingsToDb(merged).catch(err => {
+      console.warn('Notice: Settings saved locally, but database sync returned:', err?.message || err);
+    });
+
     return merged;
   } catch (e) {
     console.error('Error saving clinic settings:', e);
@@ -278,6 +321,9 @@ export function resetClinicSettings() {
       });
     } catch (_) {}
     window.dispatchEvent(new CustomEvent('revere-settings-updated', { detail: DEFAULT_SETTINGS }));
+
+    // Also update Supabase database to reset state
+    saveClinicSettingsToDb(DEFAULT_SETTINGS).catch(() => {});
   }
   return DEFAULT_SETTINGS;
 }
