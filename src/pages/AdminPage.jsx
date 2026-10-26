@@ -76,6 +76,7 @@ export default function AdminPage() {
   const videoFileInputRef = useRef(null);
   const [adminVideoPreviewUrl, setAdminVideoPreviewUrl] = useState('');
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [uploadStatusMsg, setUploadStatusMsg] = useState('');
 
   // Resolve video preview if stored in IndexedDB or direct link
   useEffect(() => {
@@ -263,20 +264,32 @@ export default function AdminPage() {
     }
 
     setIsUploadingVideo(true);
+    setUploadStatusMsg('Uploading video to Supabase Storage (promo-media)... Please wait.');
     let finalVideoUrl = '';
 
-    // 1. Try uploading to Supabase Storage so it is accessible from all browsers (Edge, Chrome, phones)
-    const cloudUrl = await uploadMediaToSupabase(file, 'promo-media');
+    try {
+      // 1. Upload to Supabase Storage so it is accessible from all browsers (Edge, Chrome, phones)
+      const cloudUrl = await uploadMediaToSupabase(file, 'promo-media');
 
-    if (cloudUrl) {
-      finalVideoUrl = cloudUrl;
-      setAdminVideoPreviewUrl(cloudUrl);
-    } else {
-      // 2. Fallback to local storage for local testing
+      if (cloudUrl) {
+        finalVideoUrl = cloudUrl;
+        setAdminVideoPreviewUrl(cloudUrl);
+        setUploadStatusMsg('✓ Video uploaded to Supabase Cloud Storage successfully!');
+      } else {
+        // 2. Fallback to local storage
+        await saveMediaItem('promo_video_blob', file);
+        const blobUrl = URL.createObjectURL(file);
+        setAdminVideoPreviewUrl(blobUrl);
+        finalVideoUrl = 'idb:promo_video_blob';
+        setUploadStatusMsg('Notice: Saved to local browser cache.');
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
       await saveMediaItem('promo_video_blob', file);
       const blobUrl = URL.createObjectURL(file);
       setAdminVideoPreviewUrl(blobUrl);
       finalVideoUrl = 'idb:promo_video_blob';
+      setUploadStatusMsg('Notice: Saved to local browser cache.');
     }
 
     const updated = {
@@ -291,7 +304,10 @@ export default function AdminPage() {
     saveClinicSettings(updated);
     setIsUploadingVideo(false);
     setSaveToast(true);
-    setTimeout(() => setSaveToast(false), 3000);
+    setTimeout(() => {
+      setSaveToast(false);
+      setUploadStatusMsg('');
+    }, 4000);
   };
 
   const handleRemoveVideo = async () => {
@@ -1070,6 +1086,22 @@ export default function AdminPage() {
                                 <Trash2 size={14} /> Remove Video
                               </button>
                             </div>
+
+                            {/* Storage Location Indicator */}
+                            {settings.promoModal.videoUrl?.startsWith('idb:') && (
+                              <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', color: '#92400e', fontSize: '0.84rem', lineHeight: '1.4' }}>
+                                ⚠️ <strong>Notice: Stored in Local Browser Memory Only.</strong><br />
+                                This video was saved during your previous session before cloud storage was configured, so it won't appear on Edge or other devices.
+                                <br />
+                                👉 Click <strong>"Remove Video"</strong> above, then upload your video file again (or paste a YouTube link) to upload it directly to Supabase Storage!
+                              </div>
+                            )}
+
+                            {settings.promoModal.videoUrl?.includes('supabase.co') && (
+                              <div style={{ marginTop: '12px', padding: '10px 14px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px', color: '#065f46', fontSize: '0.84rem', lineHeight: '1.4' }}>
+                                ✓ <strong>Live in Supabase Cloud Storage:</strong> This video is saved in your <code>promo-media</code> bucket and is accessible to all visitors on Chrome, Edge, Safari, and mobile!
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div 
@@ -1078,11 +1110,17 @@ export default function AdminPage() {
                             style={{ opacity: isUploadingVideo ? 0.7 : 1, cursor: isUploadingVideo ? 'wait' : 'pointer' }}
                           >
                             <Film size={34} className="upload-icon" />
-                            <strong>{isUploadingVideo ? 'Uploading Video to Cloud...' : 'Click to Upload Promotional Video File'}</strong>
-                            <p>{isUploadingVideo ? 'Please wait while your video is uploaded to cloud storage...' : 'Supports MP4, WebM, MOV (Canva Video, Instagram Reel, Promo Clip - Max 50MB)'}</p>
+                            <strong>{isUploadingVideo ? 'Uploading Video to Supabase Storage...' : 'Click to Upload Promotional Video File'}</strong>
+                            <p>{isUploadingVideo ? 'Please wait while your video file is uploaded to the promo-media cloud bucket...' : 'Supports MP4, WebM, MOV (Canva Video, Instagram Reel, Promo Clip - Max 50MB)'}</p>
                             <button type="button" className="btn-browse-file" disabled={isUploadingVideo}>
-                              {isUploadingVideo ? 'Uploading...' : 'Choose Video File'}
+                              {isUploadingVideo ? 'Uploading to Supabase...' : 'Choose Video File'}
                             </button>
+                          </div>
+                        )}
+
+                        {uploadStatusMsg && (
+                          <div style={{ marginTop: '10px', padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', color: '#1e40af', fontSize: '0.84rem' }}>
+                            {uploadStatusMsg}
                           </div>
                         )}
 
