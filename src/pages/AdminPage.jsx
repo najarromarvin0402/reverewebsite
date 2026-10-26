@@ -34,7 +34,9 @@ import {
   Video as VideoIcon,
   Volume2,
   VolumeX,
-  Database
+  Database,
+  Share2,
+  Globe
 } from 'lucide-react';
 import { 
   getClinicSettings, 
@@ -631,8 +633,8 @@ export default function AdminPage() {
             className={`admin-tab-btn ${activeTab === 'general' ? 'active' : ''}`}
             onClick={() => setActiveTab('general')}
           >
-            <Lock size={16} />
-            <span>Clinic Info & PIN</span>
+            <Share2 size={16} />
+            <span>Clinic Info, Socials & PIN</span>
           </button>
         </div>
       </nav>
@@ -1699,11 +1701,11 @@ export default function AdminPage() {
               <form onSubmit={handleSaveSettings} className="admin-card glass-card">
                 <div className="card-header">
                   <div className="header-icon-box users-box">
-                    <Lock size={20} />
+                    <Share2 size={20} />
                   </div>
                   <div>
-                    <h3 className="card-title">General Clinic Contacts & Portal PIN</h3>
-                    <p className="card-subtitle">Manage clinic contact lines and your administrative password.</p>
+                    <h3 className="card-title">General Clinic Contacts, Social Links & Portal PIN</h3>
+                    <p className="card-subtitle">Manage clinic contact lines, social media profiles, and your administrative password.</p>
                   </div>
                 </div>
 
@@ -1743,6 +1745,117 @@ export default function AdminPage() {
                     />
                   </div>
 
+                  {/* Social Media Links Section */}
+                  <div className="form-divider"><span>Social Media Profiles & Links</span></div>
+                  <p className="section-box-desc" style={{ marginBottom: '16px', fontSize: '0.86rem', color: 'var(--neutral-500)' }}>
+                    Enter your clinic's social media profile links. These update live in the website footer. Leave any field blank to hide that platform icon.
+                  </p>
+
+                  <div className="form-row-2">
+                    <div className="form-field">
+                      <label className="field-label">Instagram Profile URL</label>
+                      <input
+                        type="url"
+                        placeholder="https://instagram.com/reverewellness"
+                        value={settings.socialLinks?.instagram || ''}
+                        onChange={(e) => setSettings({
+                          ...settings,
+                          socialLinks: { ...(settings.socialLinks || {}), instagram: e.target.value }
+                        })}
+                        className="form-input"
+                      />
+                    </div>
+
+                    <div className="form-field">
+                      <label className="field-label">Facebook Page URL</label>
+                      <input
+                        type="url"
+                        placeholder="https://facebook.com/reverewellness"
+                        value={settings.socialLinks?.facebook || ''}
+                        onChange={(e) => setSettings({
+                          ...settings,
+                          socialLinks: { ...(settings.socialLinks || {}), facebook: e.target.value }
+                        })}
+                        className="form-input"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-row-2">
+                    <div className="form-field">
+                      <label className="field-label">TikTok Profile URL</label>
+                      <input
+                        type="url"
+                        placeholder="https://tiktok.com/@reverewellness"
+                        value={settings.socialLinks?.tiktok || ''}
+                        onChange={(e) => setSettings({
+                          ...settings,
+                          socialLinks: { ...(settings.socialLinks || {}), tiktok: e.target.value }
+                        })}
+                        className="form-input"
+                      />
+                    </div>
+
+                    <div className="form-field">
+                      <label className="field-label">YouTube Channel URL</label>
+                      <input
+                        type="url"
+                        placeholder="https://youtube.com/@reverewellness"
+                        value={settings.socialLinks?.youtube || ''}
+                        onChange={(e) => setSettings({
+                          ...settings,
+                          socialLinks: { ...(settings.socialLinks || {}), youtube: e.target.value }
+                        })}
+                        className="form-input"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-row-2">
+                    <div className="form-field">
+                      <label className="field-label">Twitter / X URL</label>
+                      <input
+                        type="url"
+                        placeholder="https://x.com/reverewellness"
+                        value={settings.socialLinks?.twitter || ''}
+                        onChange={(e) => setSettings({
+                          ...settings,
+                          socialLinks: { ...(settings.socialLinks || {}), twitter: e.target.value }
+                        })}
+                        className="form-input"
+                      />
+                    </div>
+
+                    <div className="form-field">
+                      <label className="field-label">LinkedIn Page URL</label>
+                      <input
+                        type="url"
+                        placeholder="https://linkedin.com/company/revere-wellness"
+                        value={settings.socialLinks?.linkedin || ''}
+                        onChange={(e) => setSettings({
+                          ...settings,
+                          socialLinks: { ...(settings.socialLinks || {}), linkedin: e.target.value }
+                        })}
+                        className="form-input"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-field">
+                    <label className="field-label">Google Reviews / Maps Direct URL</label>
+                    <input
+                      type="url"
+                      placeholder="https://g.page/r/your-review-link or Google Maps link"
+                      value={settings.socialLinks?.googleReview || ''}
+                      onChange={(e) => setSettings({
+                        ...settings,
+                        socialLinks: { ...(settings.socialLinks || {}), googleReview: e.target.value }
+                      })}
+                      className="form-input"
+                    />
+                    <span className="field-hint">Visitors can click the Google icon in the footer to leave a 5-star review or view directions.</span>
+                  </div>
+
                   <div className="form-divider"><span>Admin Security PIN</span></div>
 
                   <div className="form-field">
@@ -1762,7 +1875,7 @@ export default function AdminPage() {
                 <div className="card-actions">
                   <button type="submit" className="btn btn-primary">
                     <Save size={16} />
-                    <span>Save Contact & Security Settings</span>
+                    <span>Save Clinic, Social & Security Settings</span>
                   </button>
                 </div>
               </form>

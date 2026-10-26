@@ -17,6 +17,17 @@ export const DEFAULT_SETTINGS = {
   enableCallbackForm: true,
   enableJaneBookingShortcut: true,
 
+  // Social media profile links
+  socialLinks: {
+    instagram: 'https://instagram.com/reverewellness',
+    facebook: 'https://facebook.com/reverewellness',
+    twitter: '', // X
+    tiktok: '',
+    youtube: '',
+    linkedin: '',
+    googleReview: ''
+  },
+
   // Promotional Popup / Ads Modal Settings
   promoModal: {
     enabled: false,
@@ -219,6 +230,10 @@ export function getClinicSettings() {
       promoModal: {
         ...DEFAULT_SETTINGS.promoModal,
         ...(parsed.promoModal || {})
+      },
+      socialLinks: {
+        ...DEFAULT_SETTINGS.socialLinks,
+        ...(parsed.socialLinks || {})
       }
     };
   } catch (e) {
@@ -243,6 +258,10 @@ export async function syncClinicSettingsFromDb() {
       promoModal: {
         ...DEFAULT_SETTINGS.promoModal,
         ...(remote.promoModal || {})
+      },
+      socialLinks: {
+        ...DEFAULT_SETTINGS.socialLinks,
+        ...(remote.socialLinks || {})
       }
     };
 
@@ -277,6 +296,10 @@ export function saveClinicSettings(newSettings) {
       promoModal: {
         ...current.promoModal,
         ...(newSettings.promoModal || {})
+      },
+      socialLinks: {
+        ...current.socialLinks,
+        ...(newSettings.socialLinks || {})
       }
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));

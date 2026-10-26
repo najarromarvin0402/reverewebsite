@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Sparkles, 
@@ -10,9 +10,24 @@ import {
   ShieldCheck, 
   ArrowUp 
 } from 'lucide-react';
+import { getClinicSettings } from '../lib/settings';
 
 export default function Footer() {
-  const JANEAPP_URL = "https://reverewellness.janeapp.com/";
+  const [settings, setSettings] = useState(getClinicSettings());
+
+  useEffect(() => {
+    const handleUpdate = (e) => {
+      if (e?.detail) setSettings(e.detail);
+    };
+    window.addEventListener('revere-settings-updated', handleUpdate);
+    return () => window.removeEventListener('revere-settings-updated', handleUpdate);
+  }, []);
+
+  const JANEAPP_URL = settings.janeAppUrl || "https://reverewellness.janeapp.com/";
+  const receptionPhone = settings.receptionPhone || "(604) 503-0855";
+  const cleanPhone = receptionPhone.replace(/\D/g, '');
+  const receptionEmail = settings.receptionEmail || "info@reverewellness.ca";
+  const social = settings.socialLinks || {};
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -41,9 +56,9 @@ export default function Footer() {
                 <Calendar size={18} />
                 <span>Book Appointment Online</span>
               </a>
-              <a href="tel:6045030855" className="btn btn-outline cta-phone-btn">
+              <a href={`tel:${cleanPhone || '6045030855'}`} className="btn btn-outline cta-phone-btn">
                 <Phone size={18} />
-                <span>(604) 503-0855</span>
+                <span>{receptionPhone}</span>
               </a>
             </div>
           </div>
@@ -68,24 +83,62 @@ export default function Footer() {
                 Physiotherapy, IMS, and chronic pain management in a tranquil, professional setting.
               </p>
               <div className="footer-social-links">
-                <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path>
-                  </svg>
-                </a>
-                <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-                    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-                    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
-                  </svg>
-                </a>
-                <a href="https://twitter.com/revere_wellness" target="_blank" rel="noopener noreferrer" aria-label="Twitter / X">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4 4l11.733 16h4.267l-11.733 -16z"></path>
-                    <path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"></path>
-                  </svg>
-                </a>
+                {social.facebook && (
+                  <a href={social.facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook" title="Visit our Facebook">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path>
+                    </svg>
+                  </a>
+                )}
+                {social.instagram && (
+                  <a href={social.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram" title="Follow us on Instagram">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+                    </svg>
+                  </a>
+                )}
+                {social.tiktok && (
+                  <a href={social.tiktok} target="_blank" rel="noopener noreferrer" aria-label="TikTok" title="Follow us on TikTok">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"></path>
+                    </svg>
+                  </a>
+                )}
+                {social.youtube && (
+                  <a href={social.youtube} target="_blank" rel="noopener noreferrer" aria-label="YouTube" title="Visit our YouTube Channel">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path>
+                      <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon>
+                    </svg>
+                  </a>
+                )}
+                {social.twitter && (
+                  <a href={social.twitter} target="_blank" rel="noopener noreferrer" aria-label="Twitter / X" title="Follow us on X (Twitter)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 4l11.733 16h4.267l-11.733 -16z"></path>
+                      <path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"></path>
+                    </svg>
+                  </a>
+                )}
+                {social.linkedin && (
+                  <a href={social.linkedin} target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" title="Connect on LinkedIn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path>
+                      <rect x="2" y="9" width="4" height="12"></rect>
+                      <circle cx="4" cy="4" r="2"></circle>
+                    </svg>
+                  </a>
+                )}
+                {social.googleReview && (
+                  <a href={social.googleReview} target="_blank" rel="noopener noreferrer" aria-label="Google Reviews" title="Read or Leave Google Reviews">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                      <circle cx="12" cy="10" r="3"></circle>
+                    </svg>
+                  </a>
+                )}
               </div>
             </div>
 
@@ -130,12 +183,12 @@ export default function Footer() {
                 <div className="contact-line">
                   <Phone size={16} className="contact-icon text-gold" />
                   <div>
-                    <a href="tel:6045030855">(604) 503-0855</a> / <a href="tel:2363127451">(236) 312-7451</a>
+                    <a href={`tel:${cleanPhone || '6045030855'}`}>{receptionPhone}</a> / <a href="tel:2363127451">(236) 312-7451</a>
                   </div>
                 </div>
                 <div className="contact-line">
                   <Mail size={16} className="contact-icon text-gold" />
-                  <a href="mailto:info@reverewellness.ca">info@reverewellness.ca</a>
+                  <a href={`mailto:${receptionEmail}`}>{receptionEmail}</a>
                 </div>
                 <div className="contact-line">
                   <Clock size={16} className="contact-icon text-gold" />
