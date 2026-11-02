@@ -1,7 +1,9 @@
+import { fetchPractitionersFromDb, savePractitionersToDb } from '../lib/supabase';
+
 // Generated Practitioner Profiles from Revere Wellness JaneApp
 // Direct JaneApp Booking Base: https://reverewellness.janeapp.com/
 
-export const PRACTITIONERS = [
+export const DEFAULT_PRACTITIONERS = [
   {
     "id": 87,
     "slug": "joshua-chan",
@@ -1305,13 +1307,88 @@ export const DISCIPLINE_FILTERS = [
   { id: 'mld', label: 'Lymphatic Drainage (MLD)' }
 ];
 
-export function getPractitionerBySlug(slug) {
-  if (!slug) return null;
-  const normalized = slug.toLowerCase().trim();
-  return PRACTITIONERS.find(p => p.slug === normalized) || null;
+export const PRACTITIONERS_STORAGE_KEY = 'revere_practitioners';
+
+/**
+ * Get current active practitioners from localStorage or initial defaults
+ */
+export function getStoredPractitioners() {
+  if (typeof window === 'undefined') return DEFAULT_PRACTITIONERS;
+  try {
+    const raw = localStorage.getItem(PRACTITIONERS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading stored practitioners:', e);
+  }
+  return DEFAULT_PRACTITIONERS;
 }
 
-export function getPractitionersByCategory(category) {
-  if (!category || category === 'all') return PRACTITIONERS;
-  return PRACTITIONERS.filter(p => p.disciplineCategory === category);
+/**
+ * Save practitioners locally and asynchronously sync to Supabase database
+ */
+export function savePractitioners(newList) {
+  if (!Array.isArray(newList)) return newList;
+
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(PRACTITIONERS_STORAGE_KEY, JSON.stringify(newList));
+      window.dispatchEvent(new CustomEvent('revere-practitioners-updated', { detail: newList }));
+    } catch (e) {
+      console.warn('Error saving practitioners to localStorage:', e);
+    }
+  }
+
+  // Cloud sync to Supabase in background
+  savePractitionersToDb(newList).catch(err => {
+    console.warn('Cloud sync error saving practitioners:', err);
+  });
+
+  return newList;
 }
+
+/**
+ * Sync practitioners from Supabase database to local storage
+ */
+export async function syncPractitionersFromDb() {
+  try {
+    const dbList = await fetchPractitionersFromDb();
+    if (Array.isArray(dbList) && dbList.length > 0) {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(PRACTITIONERS_STORAGE_KEY, JSON.stringify(dbList));
+        window.dispatchEvent(new CustomEvent('revere-practitioners-updated', { detail: dbList }));
+      }
+      return dbList;
+    }
+  } catch (err) {
+    console.warn('Error syncing practitioners from DB:', err);
+  }
+  return null;
+}
+
+/**
+ * Reset practitioners list back to the 18 factory defaults
+ */
+export function resetPractitionersToDefaults() {
+  return savePractitioners(DEFAULT_PRACTITIONERS);
+}
+
+export function getPractitionerBySlug(slug, list) {
+  if (!slug) return null;
+  const normalized = slug.toLowerCase().trim();
+  const pool = list || getStoredPractitioners();
+  return pool.find(p => p.slug === normalized) || null;
+}
+
+export function getPractitionersByCategory(category, list) {
+  const pool = list || getStoredPractitioners();
+  if (!category || category === 'all') return pool;
+  return pool.filter(p => p.disciplineCategory === category);
+}
+
+// Export default reference for backward compatibility
+export const PRACTITIONERS = DEFAULT_PRACTITIONERS;

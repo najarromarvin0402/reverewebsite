@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Search, 
@@ -17,16 +17,32 @@ import {
   Sparkles,
   Share2
 } from 'lucide-react';
-import { PRACTITIONERS, DISCIPLINE_FILTERS } from '../data/practitioners';
+import { getStoredPractitioners, syncPractitionersFromDb, DISCIPLINE_FILTERS } from '../data/practitioners';
 
 export default function PractitionersPage() {
+  const [practitioners, setPractitioners] = useState(() => getStoredPractitioners());
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const JANEAPP_BASE = "https://reverewellness.janeapp.com/";
 
+  useEffect(() => {
+    // Fetch latest practitioners from Supabase database
+    syncPractitionersFromDb().then(data => {
+      if (data) setPractitioners(data);
+    });
+
+    const handleUpdate = (e) => {
+      if (e?.detail && Array.isArray(e.detail)) {
+        setPractitioners(e.detail);
+      }
+    };
+    window.addEventListener('revere-practitioners-updated', handleUpdate);
+    return () => window.removeEventListener('revere-practitioners-updated', handleUpdate);
+  }, []);
+
   const filteredPractitioners = useMemo(() => {
-    return PRACTITIONERS.filter(p => {
+    return practitioners.filter(p => {
       // Category filter
       const matchesCategory = selectedCategory === 'all' || p.disciplineCategory === selectedCategory;
       if (!matchesCategory) return false;
@@ -34,16 +50,16 @@ export default function PractitionersPage() {
       // Search query filter
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase().trim();
-      const nameMatch = p.name.toLowerCase().includes(q) || p.professionalName.toLowerCase().includes(q);
-      const titleMatch = p.title.toLowerCase().includes(q);
-      const specialtyMatch = p.specialties.some(s => s.toLowerCase().includes(q));
+      const nameMatch = (p.name || '').toLowerCase().includes(q) || (p.professionalName || '').toLowerCase().includes(q);
+      const titleMatch = (p.title || '').toLowerCase().includes(q);
+      const specialtyMatch = (p.specialties || []).some(s => s.toLowerCase().includes(q));
       const educationMatch = (p.education || '').toLowerCase().includes(q);
       const bioMatch = (p.bio || '').toLowerCase().includes(q);
       const languageMatch = (p.languages || []).some(l => l.toLowerCase().includes(q));
 
       return nameMatch || titleMatch || specialtyMatch || educationMatch || bioMatch || languageMatch;
     });
-  }, [selectedCategory, searchQuery]);
+  }, [practitioners, selectedCategory, searchQuery]);
 
   return (
     <div className="practitioners-page">
@@ -95,8 +111,8 @@ export default function PractitionersPage() {
             <div className="category-pills">
               {DISCIPLINE_FILTERS.map(cat => {
                 const count = cat.id === 'all' 
-                  ? PRACTITIONERS.length 
-                  : PRACTITIONERS.filter(p => p.disciplineCategory === cat.id).length;
+                  ? practitioners.length 
+                  : practitioners.filter(p => p.disciplineCategory === cat.id).length;
                 return (
                   <button
                     key={cat.id}

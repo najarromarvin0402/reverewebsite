@@ -22,19 +22,33 @@ import {
   HelpCircle,
   X
 } from 'lucide-react';
-import { PRACTITIONERS, getPractitionerBySlug } from '../data/practitioners';
+import { getStoredPractitioners, syncPractitionersFromDb, getPractitionerBySlug } from '../data/practitioners';
 
 export default function PractitionerDetailPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
-
-  const practitioner = getPractitionerBySlug(slug);
+  const [practitioners, setPractitioners] = useState(() => getStoredPractitioners());
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
+    
+    // Fetch latest from database
+    syncPractitionersFromDb().then(data => {
+      if (data) setPractitioners(data);
+    });
+
+    const handleUpdate = (e) => {
+      if (e?.detail && Array.isArray(e.detail)) {
+        setPractitioners(e.detail);
+      }
+    };
+    window.addEventListener('revere-practitioners-updated', handleUpdate);
+    return () => window.removeEventListener('revere-practitioners-updated', handleUpdate);
   }, [slug]);
+
+  const practitioner = getPractitionerBySlug(slug, practitioners);
 
   if (!practitioner) {
     return (
@@ -68,7 +82,7 @@ export default function PractitionerDetailPage() {
   const smsUrl = `sms:?&body=${encodeURIComponent(`${shareText} ${currentUrl}`)}`;
 
   // Related practitioners (same discipline or general team)
-  const otherPractitioners = PRACTITIONERS
+  const otherPractitioners = practitioners
     .filter(p => p.id !== practitioner.id)
     .slice(0, 3);
 

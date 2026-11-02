@@ -36,7 +36,16 @@ import {
   VolumeX,
   Database,
   Share2,
-  Globe
+  Globe,
+  Plus,
+  Edit2,
+  Search,
+  AlertTriangle,
+  ChevronDown,
+  UserCheck,
+  DollarSign,
+  Languages,
+  GraduationCap
 } from 'lucide-react';
 import { 
   getClinicSettings, 
@@ -53,6 +62,13 @@ import {
   formatVideoEmbedUrl
 } from '../lib/settings';
 import { fetchInquiries, deleteInquiry, isSupabaseConfigured, uploadMediaToSupabase } from '../lib/supabase';
+import { 
+  getStoredPractitioners, 
+  savePractitioners, 
+  syncPractitionersFromDb, 
+  resetPractitionersToDefaults, 
+  DISCIPLINE_FILTERS 
+} from '../data/practitioners';
 import PromotionalModal from '../components/PromotionalModal';
 
 export default function AdminPage() {
@@ -61,7 +77,7 @@ export default function AdminPage() {
   const [pinError, setPinError] = useState('');
   const [showPin, setShowPin] = useState(false);
 
-  // Active Admin Tab: 'promo' | 'whatsapp' | 'inbox' | 'general'
+  // Active Admin Tab: 'promo' | 'practitioners' | 'whatsapp' | 'inbox' | 'general'
   const [activeTab, setActiveTab] = useState('promo');
 
   // Settings State
@@ -74,11 +90,300 @@ export default function AdminPage() {
   // Inquiries State
   const [inquiries, setInquiries] = useState([]);
 
+  // Practitioners Directory State
+  const [practitioners, setPractitioners] = useState(() => getStoredPractitioners());
+  const [practitionerSearch, setPractitionerSearch] = useState('');
+  const [practitionerCategory, setPractitionerCategory] = useState('all');
+  const [isPractitionerModalOpen, setIsPractitionerModalOpen] = useState(false);
+  const [editingPractitioner, setEditingPractitioner] = useState(null);
+  const [practitionerModalMode, setPractitionerModalMode] = useState('add'); // 'add' | 'edit'
+  const [isUploadingPractitionerPhoto, setIsUploadingPractitionerPhoto] = useState(false);
+  const [practitionerPhotoStatus, setPractitionerPhotoStatus] = useState('');
+  const [practitionerDeleteConfirm, setPractitionerDeleteConfirm] = useState(null);
+  const [practitionerToastMsg, setPractitionerToastMsg] = useState('');
+  const practitionerPhotoInputRef = useRef(null);
+  const [newSpecialtyInput, setNewSpecialtyInput] = useState('');
+  const [newLanguageInput, setNewLanguageInput] = useState('');
+
   const fileInputRef = useRef(null);
   const videoFileInputRef = useRef(null);
   const [adminVideoPreviewUrl, setAdminVideoPreviewUrl] = useState('');
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [uploadStatusMsg, setUploadStatusMsg] = useState('');
+
+  const showPractitionerToast = (msg) => {
+    setPractitionerToastMsg(msg);
+    setTimeout(() => setPractitionerToastMsg(''), 4000);
+  };
+
+  const generatePractitionerSlug = (name) => {
+    return (name || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+  };
+
+  const handleOpenAddPractitioner = () => {
+    setPractitionerModalMode('add');
+    setEditingPractitioner({
+      id: Date.now(),
+      slug: '',
+      name: '',
+      professionalName: '',
+      title: 'Registered Massage Therapist',
+      credentials: 'RMT, CCHPBC Registered',
+      disciplineCategory: 'rmt',
+      disciplineLabel: 'Registered Massage Therapy',
+      disciplines: ['Registered Massage Therapy'],
+      photo: '',
+      shortBio: '',
+      bio: '',
+      specialties: ['Deep Tissue Massage', 'Myofascial Release', 'Trigger Point Therapy'],
+      education: '',
+      languages: ['English'],
+      yearsExperience: '5+ Years',
+      allowOnlineBooking: true,
+      treatmentIds: [1],
+      janeBookingUrl: 'https://reverewellness.janeapp.com/',
+      treatments: [
+        {
+          id: Date.now(),
+          name: 'RMT Massage (60 minutes)',
+          duration: 60,
+          price: 138,
+          description: 'Therapeutic or relaxation massage performed by a professional Registered Massage Therapist.',
+          priceIncludesTax: true
+        }
+      ]
+    });
+    setNewSpecialtyInput('');
+    setNewLanguageInput('');
+    setPractitionerPhotoStatus('');
+    setIsPractitionerModalOpen(true);
+  };
+
+  const handleOpenEditPractitioner = (p) => {
+    setPractitionerModalMode('edit');
+    setEditingPractitioner(JSON.parse(JSON.stringify(p)));
+    setNewSpecialtyInput('');
+    setNewLanguageInput('');
+    setPractitionerPhotoStatus('');
+    setIsPractitionerModalOpen(true);
+  };
+
+  const handleSavePractitionerModal = (e) => {
+    if (e) e.preventDefault();
+    if (!editingPractitioner) return;
+
+    if (!editingPractitioner.name.trim()) {
+      alert('Please enter the practitioner\'s full name.');
+      return;
+    }
+
+    const calculatedSlug = editingPractitioner.slug?.trim() || generatePractitionerSlug(editingPractitioner.name);
+    const updatedPractitioner = {
+      ...editingPractitioner,
+      slug: calculatedSlug,
+      name: editingPractitioner.name.trim(),
+      professionalName: editingPractitioner.professionalName?.trim() || editingPractitioner.name.trim(),
+      disciplines: editingPractitioner.disciplines?.length ? editingPractitioner.disciplines : [editingPractitioner.disciplineLabel || 'Registered Massage Therapy']
+    };
+
+    let updatedList;
+    if (practitionerModalMode === 'add') {
+      const exists = practitioners.some(p => p.slug === updatedPractitioner.slug);
+      if (exists) {
+        updatedPractitioner.slug = `${updatedPractitioner.slug}-${Date.now().toString().slice(-4)}`;
+      }
+      updatedList = [updatedPractitioner, ...practitioners];
+    } else {
+      updatedList = practitioners.map(p => p.id === updatedPractitioner.id ? updatedPractitioner : p);
+    }
+
+    setPractitioners(updatedList);
+    savePractitioners(updatedList);
+    setIsPractitionerModalOpen(false);
+    setEditingPractitioner(null);
+    showPractitionerToast(practitionerModalMode === 'add' ? `Practitioner "${updatedPractitioner.name}" added successfully!` : `Practitioner "${updatedPractitioner.name}" updated successfully!`);
+  };
+
+  const handleTogglePractitionerBooking = (id, currentVal) => {
+    const updatedList = practitioners.map(p => {
+      if (p.id === id) {
+        return { ...p, allowOnlineBooking: !currentVal };
+      }
+      return p;
+    });
+    setPractitioners(updatedList);
+    savePractitioners(updatedList);
+    showPractitionerToast(`Online booking ${!currentVal ? 'enabled' : 'paused'} for practitioner.`);
+  };
+
+  const handleDeletePractitioner = (id) => {
+    const target = practitioners.find(p => p.id === id);
+    const updatedList = practitioners.filter(p => p.id !== id);
+    setPractitioners(updatedList);
+    savePractitioners(updatedList);
+    setPractitionerDeleteConfirm(null);
+    showPractitionerToast(`Practitioner "${target?.name || ''}" removed from directory.`);
+  };
+
+  const handleResetPractitionersToDefaults = () => {
+    if (window.confirm('Reset all practitioners to the original 18 clinic profiles? Any custom additions or edits will be restored to initial defaults.')) {
+      const defaults = resetPractitionersToDefaults();
+      setPractitioners(defaults);
+      showPractitionerToast('Directory reset to 18 default practitioner profiles.');
+    }
+  };
+
+  const handlePractitionerPhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select a valid image file (JPG, PNG, WebP).');
+      return;
+    }
+
+    setIsUploadingPractitionerPhoto(true);
+    setPractitionerPhotoStatus('Uploading photo to Supabase storage...');
+
+    try {
+      const publicUrl = await uploadMediaToSupabase(file, 'promo-media');
+      if (publicUrl) {
+        setEditingPractitioner(prev => ({ ...prev, photo: publicUrl }));
+        setPractitionerPhotoStatus('✓ Photo uploaded to Supabase storage!');
+      } else {
+        // Fallback compression
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const maxWidth = 800;
+            let width = img.width;
+            let height = img.height;
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            setEditingPractitioner(prev => ({ ...prev, photo: dataUrl }));
+            setPractitionerPhotoStatus('✓ Photo loaded locally.');
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+    } catch (err) {
+      console.warn('Practitioner photo upload error:', err);
+      setPractitionerPhotoStatus('Upload notice: image loaded locally.');
+    } finally {
+      setIsUploadingPractitionerPhoto(false);
+    }
+  };
+
+  const handleAddTreatment = () => {
+    setEditingPractitioner(prev => ({
+      ...prev,
+      treatments: [
+        ...(prev.treatments || []),
+        {
+          id: Date.now(),
+          name: 'New Treatment Service',
+          duration: 60,
+          price: 138,
+          description: '',
+          priceIncludesTax: true
+        }
+      ]
+    }));
+  };
+
+  const handleUpdateTreatment = (index, field, value) => {
+    setEditingPractitioner(prev => {
+      const updated = [...(prev.treatments || [])];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, treatments: updated };
+    });
+  };
+
+  const handleRemoveTreatment = (index) => {
+    setEditingPractitioner(prev => {
+      const updated = [...(prev.treatments || [])];
+      updated.splice(index, 1);
+      return { ...prev, treatments: updated };
+    });
+  };
+
+  const handleAddSpecialty = () => {
+    if (!newSpecialtyInput.trim()) return;
+    const tag = newSpecialtyInput.trim();
+    if (!editingPractitioner.specialties?.includes(tag)) {
+      setEditingPractitioner(prev => ({
+        ...prev,
+        specialties: [...(prev.specialties || []), tag]
+      }));
+    }
+    setNewSpecialtyInput('');
+  };
+
+  const handleRemoveSpecialty = (tagToRemove) => {
+    setEditingPractitioner(prev => ({
+      ...prev,
+      specialties: (prev.specialties || []).filter(s => s !== tagToRemove)
+    }));
+  };
+
+  const handleAddLanguage = () => {
+    if (!newLanguageInput.trim()) return;
+    const lang = newLanguageInput.trim();
+    if (!editingPractitioner.languages?.includes(lang)) {
+      setEditingPractitioner(prev => ({
+        ...prev,
+        languages: [...(prev.languages || []), lang]
+      }));
+    }
+    setNewLanguageInput('');
+  };
+
+  const handleRemoveLanguage = (langToRemove) => {
+    setEditingPractitioner(prev => ({
+      ...prev,
+      languages: (prev.languages || []).filter(l => l !== langToRemove)
+    }));
+  };
+
+  const handleDisciplineCategoryChange = (category) => {
+    let defaultTitle = editingPractitioner.title;
+    let defaultLabel = editingPractitioner.disciplineLabel;
+    if (category === 'rmt') {
+      defaultTitle = 'Registered Massage Therapist';
+      defaultLabel = 'Registered Massage Therapy';
+    } else if (category === 'physio') {
+      defaultTitle = 'Registered Physiotherapist';
+      defaultLabel = 'Physiotherapy & Rehabilitation';
+    } else if (category === 'kinesiology') {
+      defaultTitle = 'Registered Kinesiologist';
+      defaultLabel = 'Kinesiology & Active Rehab';
+    } else if (category === 'mld') {
+      defaultTitle = 'Certified MLD Therapist & RMT';
+      defaultLabel = 'Lymphatic Drainage (MLD)';
+    }
+
+    setEditingPractitioner(prev => ({
+      ...prev,
+      disciplineCategory: category,
+      disciplineLabel: defaultLabel,
+      title: defaultTitle,
+      disciplines: [defaultLabel]
+    }));
+  };
 
   // Resolve video preview if stored in IndexedDB or direct link
   useEffect(() => {
@@ -119,11 +424,27 @@ export default function AdminPage() {
       if (updated) setSettings(updated);
     });
 
+    // Fetch latest practitioners from Supabase database
+    syncPractitionersFromDb().then(updatedList => {
+      if (updatedList) setPractitioners(updatedList);
+    });
+
     const handleSettingsSync = (e) => {
       if (e?.detail) setSettings(e.detail);
     };
+    const handlePractitionersSync = (e) => {
+      if (e?.detail && Array.isArray(e.detail)) {
+        setPractitioners(e.detail);
+      }
+    };
+
     window.addEventListener('revere-settings-updated', handleSettingsSync);
-    return () => window.removeEventListener('revere-settings-updated', handleSettingsSync);
+    window.addEventListener('revere-practitioners-updated', handlePractitionersSync);
+
+    return () => {
+      window.removeEventListener('revere-settings-updated', handleSettingsSync);
+      window.removeEventListener('revere-practitioners-updated', handlePractitionersSync);
+    };
   }, []);
 
   const loadInquiries = async () => {
@@ -391,6 +712,22 @@ export default function AdminPage() {
   const cleanNumber = cleanPhoneForWhatsApp(settings.whatsappNumber);
   const testWhatsAppUrl = getWhatsAppUrl(settings.whatsappNumber, settings.whatsappGreeting);
 
+  const filteredAdminPractitioners = practitioners.filter(p => {
+    if (practitionerCategory !== 'all' && p.disciplineCategory !== practitionerCategory) {
+      return false;
+    }
+    if (!practitionerSearch.trim()) return true;
+    const q = practitionerSearch.toLowerCase().trim();
+    return (
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.professionalName || '').toLowerCase().includes(q) ||
+      (p.title || '').toLowerCase().includes(q) ||
+      (p.credentials || '').toLowerCase().includes(q) ||
+      (p.specialties || []).some(s => s.toLowerCase().includes(q)) ||
+      (p.languages || []).some(l => l.toLowerCase().includes(q))
+    );
+  });
+
   if (!isAuthenticated) {
     return (
       <div className="admin-login-page">
@@ -611,6 +948,15 @@ export default function AdminPage() {
           </button>
 
           <button 
+            className={`admin-tab-btn ${activeTab === 'practitioners' ? 'active' : ''}`}
+            onClick={() => setActiveTab('practitioners')}
+          >
+            <Users size={16} />
+            <span>Practitioners Directory</span>
+            <span className="tab-badge-count">{practitioners.length}</span>
+          </button>
+
+          <button 
             className={`admin-tab-btn ${activeTab === 'whatsapp' ? 'active' : ''}`}
             onClick={() => setActiveTab('whatsapp')}
           >
@@ -646,6 +992,13 @@ export default function AdminPage() {
             <div className="admin-toast success">
               <CheckCircle2 size={18} />
               <span>Settings saved successfully! Website updates take effect immediately in real time.</span>
+            </div>
+          )}
+
+          {practitionerToastMsg && (
+            <div className="admin-toast success">
+              <CheckCircle2 size={18} />
+              <span>{practitionerToastMsg}</span>
             </div>
           )}
 
@@ -1509,7 +1862,227 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* TAB 2: WHATSAPP CHAT SETTINGS */}
+          {/* TAB 2: PRACTITIONERS MANAGEMENT */}
+          {activeTab === 'practitioners' && (
+            <div className="tab-content-wrapper">
+              <div className="admin-card glass-card">
+                {/* Header */}
+                <div className="card-header practitioners-header">
+                  <div className="practitioners-header-left">
+                    <div className="header-icon-box users-box">
+                      <Users size={22} />
+                    </div>
+                    <div>
+                      <div className="title-row">
+                        <h2 className="card-title">Practitioners & Clinical Team Directory</h2>
+                        <span className="practitioners-total-badge">
+                          {practitioners.length} Practitioners
+                        </span>
+                      </div>
+                      <p className="card-subtitle">
+                        Add, edit, pause, and delete therapist profiles. All updates synchronize instantly to the live website directory, bio pages, and Supabase cloud database.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="practitioners-header-actions">
+                    <button 
+                      type="button" 
+                      onClick={handleOpenAddPractitioner}
+                      className="btn btn-primary btn-add-practitioner"
+                    >
+                      <Plus size={16} />
+                      <span>Add New Practitioner</span>
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={handleResetPractitionersToDefaults}
+                      className="btn-reset-practitioners"
+                      title="Reset all practitioners to the 18 default clinic profiles"
+                    >
+                      <RotateCcw size={14} />
+                      <span>Reset Factory 18</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filter and Search Bar */}
+                <div className="practitioners-admin-controls">
+                  {/* Category Pills */}
+                  <div className="admin-category-pills">
+                    {DISCIPLINE_FILTERS.map(cat => {
+                      const count = cat.id === 'all' 
+                        ? practitioners.length 
+                        : practitioners.filter(p => p.disciplineCategory === cat.id).length;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          className={`admin-pill ${practitionerCategory === cat.id ? 'active' : ''}`}
+                          onClick={() => setPractitionerCategory(cat.id)}
+                        >
+                          <span>{cat.label}</span>
+                          <span className="admin-pill-badge">{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Search input */}
+                  <div className="admin-search-box">
+                    <Search size={16} className="admin-search-icon" />
+                    <input 
+                      type="text" 
+                      placeholder="Search practitioner by name, credentials, title, or specialty..."
+                      value={practitionerSearch}
+                      onChange={(e) => setPractitionerSearch(e.target.value)}
+                      className="admin-search-input"
+                    />
+                    {practitionerSearch && (
+                      <button 
+                        type="button" 
+                        onClick={() => setPractitionerSearch('')} 
+                        className="admin-clear-search"
+                        title="Clear search"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Practitioner Cards Grid */}
+                {filteredAdminPractitioners.length === 0 ? (
+                  <div className="empty-practitioners-box">
+                    <Users size={40} className="empty-icon" />
+                    <h4>No practitioners found</h4>
+                    <p>No profiles match your current search or discipline filter.</p>
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary"
+                      onClick={() => { setPractitionerSearch(''); setPractitionerCategory('all'); }}
+                    >
+                      Clear Filters
+                    </button>
+                  </div>
+                ) : (
+                  <div className="admin-practitioners-grid">
+                    {filteredAdminPractitioners.map((p) => {
+                      return (
+                        <div key={p.id} className="admin-practitioner-card">
+                          <div className="admin-card-top">
+                            {/* Photo / Avatar */}
+                            <div className="admin-avatar-wrapper">
+                              {p.photo ? (
+                                <img src={p.photo} alt={p.name} className="admin-avatar-img" />
+                              ) : (
+                                <div className="admin-avatar-placeholder">
+                                  {(p.name || 'PT').split(' ').map(n => n[0]).join('').slice(0, 2)}
+                                </div>
+                              )}
+                              <span className={`admin-discipline-chip chip-${p.disciplineCategory || 'rmt'}`}>
+                                {p.disciplineCategory?.toUpperCase() || 'RMT'}
+                              </span>
+                            </div>
+
+                            {/* Details */}
+                            <div className="admin-details-col">
+                              <div className="admin-name-row">
+                                <h4 className="admin-p-name">{p.name}</h4>
+                                <span className={`admin-booking-status ${p.allowOnlineBooking ? 'booking-active' : 'booking-paused'}`}>
+                                  {p.allowOnlineBooking ? 'Online Booking Active' : 'Booking Paused'}
+                                </span>
+                              </div>
+                              <div className="admin-p-title">{p.title}</div>
+                              <div className="admin-p-credentials">{p.credentials}</div>
+                              <div className="admin-p-meta">
+                                <span>{p.yearsExperience || 'Experienced'}</span>
+                                <span>•</span>
+                                <span>{(p.treatments || []).length} Services</span>
+                                {p.languages?.length > 0 && (
+                                  <>
+                                    <span>•</span>
+                                    <span>{p.languages.join(', ')}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Quick Bio snippet */}
+                          <p className="admin-short-bio">
+                            {p.shortBio || (p.bio ? p.bio.slice(0, 120) + '...' : 'No bio summary provided.')}
+                          </p>
+
+                          {/* Specialties Tags */}
+                          {p.specialties?.length > 0 && (
+                            <div className="admin-specialties-tags">
+                              {p.specialties.slice(0, 3).map((spec, i) => (
+                                <span key={i} className="admin-specialty-tag">{spec}</span>
+                              ))}
+                              {p.specialties.length > 3 && (
+                                <span className="admin-specialty-tag more">+{p.specialties.length - 3} more</span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Card Footer Actions */}
+                          <div className="admin-card-footer">
+                            <div className="footer-left-actions">
+                              {/* Quick Online Booking Toggle */}
+                              <label className="quick-switch-label" title="Toggle JaneApp online booking for this practitioner">
+                                <input 
+                                  type="checkbox" 
+                                  checked={p.allowOnlineBooking ?? true} 
+                                  onChange={() => handleTogglePractitionerBooking(p.id, p.allowOnlineBooking ?? true)} 
+                                />
+                                <span className="quick-switch-slider"></span>
+                                <span className="quick-switch-text">Bookable</span>
+                              </label>
+
+                              {/* View public profile */}
+                              <Link 
+                                to={`/practitioners/${p.slug}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="btn-card-view"
+                                title="View live profile page in new tab"
+                              >
+                                <ExternalLink size={13} />
+                                <span>View</span>
+                              </Link>
+                            </div>
+
+                            <div className="footer-right-actions">
+                              <button 
+                                type="button" 
+                                onClick={() => handleOpenEditPractitioner(p)} 
+                                className="btn-card-edit"
+                                title="Edit practitioner profile details"
+                              >
+                                <Edit2 size={14} />
+                                <span>Edit</span>
+                              </button>
+                              <button 
+                                type="button" 
+                                onClick={() => setPractitionerDeleteConfirm(p)} 
+                                className="btn-card-delete"
+                                title="Delete practitioner"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: WHATSAPP CHAT SETTINGS */}
           {activeTab === 'whatsapp' && (
             <div className="tab-content-wrapper">
               <form onSubmit={handleSaveSettings} className="admin-card glass-card">
@@ -1891,6 +2464,520 @@ export default function AdminPage() {
           previewData={settings.promoModal}
           onClose={() => setShowPreviewModal(false)}
         />
+      )}
+
+      {/* ADD / EDIT PRACTITIONER MODAL DIALOG */}
+      {isPractitionerModalOpen && editingPractitioner && (
+        <div className="practitioner-modal-overlay" onClick={() => setIsPractitionerModalOpen(false)}>
+          <div className="practitioner-modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-header-left">
+                <div className="modal-header-icon">
+                  {practitionerModalMode === 'add' ? <Plus size={20} /> : <Edit2 size={20} />}
+                </div>
+                <div>
+                  <h3 className="modal-title">
+                    {practitionerModalMode === 'add' ? 'Add New Practitioner' : `Edit Practitioner: ${editingPractitioner.name}`}
+                  </h3>
+                  <p className="modal-subtitle">
+                    Complete all clinical details, credentials, profile photo, and treatments. Changes sync live across the website.
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                className="modal-close-btn" 
+                onClick={() => setIsPractitionerModalOpen(false)}
+                aria-label="Close dialog"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePractitionerModal} className="modal-form-content">
+              {/* SECTION 1: IDENTITY & TITLES */}
+              <div className="modal-section-card">
+                <div className="modal-section-title">
+                  <ShieldCheck size={16} />
+                  <span>1. Identity, Title & Discipline</span>
+                </div>
+
+                <div className="form-row-2">
+                  <div className="form-field">
+                    <label className="field-label">Full Name *</label>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="e.g. Joshua Chan"
+                      value={editingPractitioner.name || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEditingPractitioner(prev => ({
+                          ...prev,
+                          name: val,
+                          professionalName: prev.professionalName ? prev.professionalName : val,
+                          slug: practitionerModalMode === 'add' && !prev.slug ? generatePractitionerSlug(val) : prev.slug
+                        }));
+                      }}
+                      className="form-input"
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label className="field-label">Professional Name (with designation)</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Joshua Chan, RMT"
+                      value={editingPractitioner.professionalName || ''}
+                      onChange={(e) => setEditingPractitioner({ ...editingPractitioner, professionalName: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row-2">
+                  <div className="form-field">
+                    <label className="field-label">Discipline Category *</label>
+                    <select 
+                      value={editingPractitioner.disciplineCategory || 'rmt'}
+                      onChange={(e) => handleDisciplineCategoryChange(e.target.value)}
+                      className="form-input form-select"
+                    >
+                      <option value="rmt">Registered Massage Therapy (RMT)</option>
+                      <option value="physio">Physiotherapy & Rehabilitation (PT)</option>
+                      <option value="kinesiology">Kinesiology & Active Rehab</option>
+                      <option value="mld">Lymphatic Drainage (MLD)</option>
+                    </select>
+                  </div>
+
+                  <div className="form-field">
+                    <label className="field-label">Discipline Display Label</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Registered Massage Therapy"
+                      value={editingPractitioner.disciplineLabel || ''}
+                      onChange={(e) => setEditingPractitioner({ ...editingPractitioner, disciplineLabel: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row-2">
+                  <div className="form-field">
+                    <label className="field-label">Professional Title</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Registered Massage Therapist"
+                      value={editingPractitioner.title || ''}
+                      onChange={(e) => setEditingPractitioner({ ...editingPractitioner, title: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label className="field-label">Credentials & Regulatory Body</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. RMT, CCHPBC Registered"
+                      value={editingPractitioner.credentials || ''}
+                      onChange={(e) => setEditingPractitioner({ ...editingPractitioner, credentials: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-field">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label className="field-label" style={{ margin: 0 }}>URL Slug (e.g. /practitioners/<strong>{editingPractitioner.slug || 'slug'}</strong>)</label>
+                    <button 
+                      type="button" 
+                      onClick={() => setEditingPractitioner(prev => ({ ...prev, slug: generatePractitionerSlug(prev.name) }))}
+                      className="btn-auto-slug"
+                    >
+                      Auto-generate from Name
+                    </button>
+                  </div>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. joshua-chan"
+                    value={editingPractitioner.slug || ''}
+                    onChange={(e) => setEditingPractitioner({ ...editingPractitioner, slug: e.target.value })}
+                    className="form-input"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* SECTION 2: PHOTO */}
+              <div className="modal-section-card">
+                <div className="modal-section-title">
+                  <ImageIcon size={16} />
+                  <span>2. Practitioner Portrait Photo</span>
+                </div>
+
+                <div className="photo-manager-layout">
+                  <div className="photo-preview-box">
+                    {editingPractitioner.photo ? (
+                      <img src={editingPractitioner.photo} alt="Preview" className="modal-photo-img" />
+                    ) : (
+                      <div className="modal-photo-placeholder">
+                        <Users size={32} />
+                        <span>No Photo</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="photo-upload-controls">
+                    <div className="photo-actions-row">
+                      <input 
+                        type="file" 
+                        ref={practitionerPhotoInputRef}
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={handlePractitionerPhotoUpload}
+                      />
+                      <button 
+                        type="button" 
+                        className="btn btn-secondary btn-upload-photo"
+                        disabled={isUploadingPractitionerPhoto}
+                        onClick={() => practitionerPhotoInputRef.current?.click()}
+                      >
+                        <Upload size={14} />
+                        <span>{isUploadingPractitionerPhoto ? 'Uploading...' : 'Upload Image to Supabase Cloud'}</span>
+                      </button>
+
+                      {editingPractitioner.photo && (
+                        <button 
+                          type="button" 
+                          className="btn-remove-photo"
+                          onClick={() => setEditingPractitioner(prev => ({ ...prev, photo: '' }))}
+                        >
+                          <Trash2 size={13} />
+                          <span>Remove Photo</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {practitionerPhotoStatus && (
+                      <div className="photo-status-notice">{practitionerPhotoStatus}</div>
+                    )}
+
+                    <div className="form-field" style={{ marginTop: '10px' }}>
+                      <label className="field-label">Direct Photo URL (or JaneApp CDN link)</label>
+                      <input 
+                        type="url" 
+                        placeholder="https://assets-jane-cac1-15.janeapp.net/..."
+                        value={editingPractitioner.photo || ''}
+                        onChange={(e) => setEditingPractitioner({ ...editingPractitioner, photo: e.target.value })}
+                        className="form-input"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 3: BIOS & EXPERIENCE */}
+              <div className="modal-section-card">
+                <div className="modal-section-title">
+                  <FileText size={16} />
+                  <span>3. Biography, Education & Languages</span>
+                </div>
+
+                <div className="form-field">
+                  <label className="field-label">Short Summary Bio (Displayed on cards & previews)</label>
+                  <textarea 
+                    rows="2"
+                    placeholder="Brief 1-2 sentence highlight of clinical expertise, approach, and philosophy..."
+                    value={editingPractitioner.shortBio || ''}
+                    onChange={(e) => setEditingPractitioner({ ...editingPractitioner, shortBio: e.target.value })}
+                    className="form-textarea"
+                  ></textarea>
+                </div>
+
+                <div className="form-field">
+                  <label className="field-label">Full Biography (Multi-paragraph biography for detail page)</label>
+                  <textarea 
+                    rows="6"
+                    placeholder="Comprehensive background, education history, patient-centered approach, personal interests..."
+                    value={editingPractitioner.bio || ''}
+                    onChange={(e) => setEditingPractitioner({ ...editingPractitioner, bio: e.target.value })}
+                    className="form-textarea"
+                  ></textarea>
+                </div>
+
+                <div className="form-row-2">
+                  <div className="form-field">
+                    <label className="field-label">Years of Experience</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. 5+ Years"
+                      value={editingPractitioner.yearsExperience || ''}
+                      onChange={(e) => setEditingPractitioner({ ...editingPractitioner, yearsExperience: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label className="field-label">Education / University / College</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Langara College RMT Program or UBC B.Sc. Kinesiology"
+                      value={editingPractitioner.education || ''}
+                      onChange={(e) => setEditingPractitioner({ ...editingPractitioner, education: e.target.value })}
+                      className="form-input"
+                    />
+                  </div>
+                </div>
+
+                {/* Specialties Tags */}
+                <div className="form-field">
+                  <label className="field-label">Clinical Specialties & Techniques</label>
+                  <div className="tags-chips-container">
+                    {(editingPractitioner.specialties || []).map((spec, i) => (
+                      <span key={i} className="chip-tag">
+                        <span>{spec}</span>
+                        <button type="button" onClick={() => handleRemoveSpecialty(spec)} className="chip-remove" title="Remove specialty">
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="tag-input-group">
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Deep Tissue, Sports Injury, TMJ Dysfunction, Postural Restoration..."
+                      value={newSpecialtyInput}
+                      onChange={(e) => setNewSpecialtyInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddSpecialty(); } }}
+                      className="form-input"
+                    />
+                    <button type="button" onClick={handleAddSpecialty} className="btn btn-secondary btn-add-tag">
+                      <Plus size={14} /> Add Specialty
+                    </button>
+                  </div>
+                </div>
+
+                {/* Languages Tags */}
+                <div className="form-field">
+                  <label className="field-label">Languages Spoken</label>
+                  <div className="tags-chips-container">
+                    {(editingPractitioner.languages || []).map((lang, i) => (
+                      <span key={i} className="chip-tag">
+                        <span>{lang}</span>
+                        <button type="button" onClick={() => handleRemoveLanguage(lang)} className="chip-remove" title="Remove language">
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="tag-input-group">
+                    <input 
+                      type="text" 
+                      placeholder="e.g. English, Tagalog, Punjabi, Hindi, Cantonese..."
+                      value={newLanguageInput}
+                      onChange={(e) => setNewLanguageInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddLanguage(); } }}
+                      className="form-input"
+                    />
+                    <button type="button" onClick={handleAddLanguage} className="btn btn-secondary btn-add-tag">
+                      <Plus size={14} /> Add Language
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 4: JANEAPP BOOKING INTEGRATION */}
+              <div className="modal-section-card">
+                <div className="modal-section-title">
+                  <Calendar size={16} />
+                  <span>4. JaneApp Online Booking & Schedule</span>
+                </div>
+
+                <div className="booking-toggle-row">
+                  <div>
+                    <strong>Allow Online Booking through JaneApp</strong>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '0.84rem', color: 'var(--neutral-500)' }}>
+                      When turned on, visitors see "Book with Therapist" buttons that route directly to their booking page.
+                    </p>
+                  </div>
+                  <label className="switch">
+                    <input 
+                      type="checkbox" 
+                      checked={editingPractitioner.allowOnlineBooking ?? true}
+                      onChange={(e) => setEditingPractitioner({ ...editingPractitioner, allowOnlineBooking: e.target.checked })}
+                    />
+                    <span className="slider round"></span>
+                  </label>
+                </div>
+
+                <div className="form-field" style={{ marginTop: '14px' }}>
+                  <label className="field-label">JaneApp Direct Booking URL</label>
+                  <input 
+                    type="url" 
+                    placeholder="https://reverewellness.janeapp.com/#/staff_member/87"
+                    value={editingPractitioner.janeBookingUrl || ''}
+                    onChange={(e) => setEditingPractitioner({ ...editingPractitioner, janeBookingUrl: e.target.value })}
+                    className="form-input"
+                  />
+                  <span className="field-hint">
+                    Direct staff member link on JaneApp (e.g. <code>https://reverewellness.janeapp.com/#/staff_member/YOUR_STAFF_ID</code>)
+                  </span>
+                </div>
+              </div>
+
+              {/* SECTION 5: TREATMENTS OFFERED */}
+              <div className="modal-section-card">
+                <div className="modal-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <DollarSign size={16} />
+                    <span>5. Treatment Services & Pricing ({(editingPractitioner.treatments || []).length})</span>
+                  </div>
+                  <button type="button" onClick={handleAddTreatment} className="btn-add-treatment-item">
+                    <Plus size={14} /> Add Service
+                  </button>
+                </div>
+
+                {(!editingPractitioner.treatments || editingPractitioner.treatments.length === 0) ? (
+                  <p style={{ color: 'var(--neutral-500)', fontSize: '0.88rem', fontStyle: 'italic', margin: '8px 0' }}>
+                    No specific treatments configured yet. Click "Add Service" above to list treatments for this practitioner.
+                  </p>
+                ) : (
+                  <div className="treatments-editor-list">
+                    {editingPractitioner.treatments.map((tr, idx) => (
+                      <div key={tr.id || idx} className="treatment-editor-card">
+                        <div className="treatment-editor-header">
+                          <span className="treatment-idx-badge">Service #{idx + 1}</span>
+                          <button 
+                            type="button" 
+                            onClick={() => handleRemoveTreatment(idx)} 
+                            className="btn-remove-treatment"
+                            title="Remove this treatment"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+
+                        <div className="form-row-2">
+                          <div className="form-field">
+                            <label className="field-label">Treatment Service Name *</label>
+                            <input 
+                              type="text" 
+                              placeholder="e.g. RMT Massage (60 minutes)"
+                              value={tr.name || ''}
+                              onChange={(e) => handleUpdateTreatment(idx, 'name', e.target.value)}
+                              className="form-input"
+                              required
+                            />
+                          </div>
+
+                          <div className="form-row-2">
+                            <div className="form-field">
+                              <label className="field-label">Duration (Mins)</label>
+                              <input 
+                                type="number" 
+                                min="15" 
+                                max="180" 
+                                step="5"
+                                placeholder="60"
+                                value={tr.duration !== undefined ? tr.duration : 60}
+                                onChange={(e) => handleUpdateTreatment(idx, 'duration', parseInt(e.target.value) || 0)}
+                                className="form-input"
+                              />
+                            </div>
+
+                            <div className="form-field">
+                              <label className="field-label">Price ($ CAD)</label>
+                              <input 
+                                type="number" 
+                                min="0" 
+                                step="0.5"
+                                placeholder="138"
+                                value={tr.price !== undefined ? tr.price : 0}
+                                onChange={(e) => handleUpdateTreatment(idx, 'price', parseFloat(e.target.value) || 0)}
+                                className="form-input"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="form-field">
+                          <label className="field-label">Service Description / ICBC Notes</label>
+                          <input 
+                            type="text" 
+                            placeholder="e.g. Therapeutic deep tissue or relaxation treatment..."
+                            value={tr.description || ''}
+                            onChange={(e) => handleUpdateTreatment(idx, 'description', e.target.value)}
+                            className="form-input"
+                          />
+                        </div>
+
+                        <label className="checkbox-tax-label">
+                          <input 
+                            type="checkbox" 
+                            checked={tr.priceIncludesTax ?? true}
+                            onChange={(e) => handleUpdateTreatment(idx, 'priceIncludesTax', e.target.checked)}
+                          />
+                          <span>Price includes applicable taxes (GST)</span>
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* MODAL FOOTER ACTIONS */}
+              <div className="modal-footer-actions">
+                <button 
+                  type="button" 
+                  onClick={() => setIsPractitionerModalOpen(false)}
+                  className="btn btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary btn-save-modal"
+                >
+                  <Save size={16} />
+                  <span>{practitionerModalMode === 'add' ? 'Save New Practitioner' : 'Save Practitioner Changes'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE PRACTITIONER CONFIRMATION MODAL */}
+      {practitionerDeleteConfirm && (
+        <div className="delete-modal-overlay" onClick={() => setPractitionerDeleteConfirm(null)}>
+          <div className="delete-modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="delete-modal-icon">
+              <AlertTriangle size={32} />
+            </div>
+            <h3 className="delete-modal-title">Delete Practitioner Profile?</h3>
+            <p className="delete-modal-text">
+              Are you sure you want to permanently delete <strong>{practitionerDeleteConfirm.name}</strong> ({practitionerDeleteConfirm.title})? 
+              This will remove their profile from the practitioners directory, search listings, and online booking routes.
+            </p>
+            <div className="delete-modal-actions">
+              <button 
+                type="button" 
+                onClick={() => setPractitionerDeleteConfirm(null)}
+                className="btn btn-secondary"
+              >
+                Keep Practitioner
+              </button>
+              <button 
+                type="button" 
+                onClick={() => handleDeletePractitioner(practitionerDeleteConfirm.id)}
+                className="btn-danger-delete"
+              >
+                <Trash2 size={16} />
+                <span>Yes, Delete Practitioner</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <style>{`
@@ -2749,6 +3836,835 @@ export default function AdminPage() {
         .btn-inquiry-delete { margin-left: auto; color: var(--neutral-400); padding: 4px; cursor: pointer; }
         .btn-inquiry-delete:hover { color: #b91c1c; }
 
+        /* Practitioners Management Directory */
+        .practitioners-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          flex-wrap: wrap;
+          gap: 16px;
+        }
+        .practitioners-header-left {
+          display: flex;
+          align-items: flex-start;
+          gap: 16px;
+          flex: 1;
+          min-width: 280px;
+        }
+        .practitioners-total-badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 3px 10px;
+          border-radius: var(--radius-full);
+          font-size: 0.76rem;
+          font-weight: 700;
+          background: #ecfdf5;
+          color: #065f46;
+          border: 1px solid #a7f3d0;
+          letter-spacing: 0.02em;
+        }
+        .practitioners-header-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .btn-add-practitioner {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 20px;
+          border-radius: var(--radius-full);
+          font-weight: 700;
+          box-shadow: 0 4px 14px rgba(127, 125, 49, 0.35);
+        }
+        .btn-reset-practitioners {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 14px;
+          border-radius: var(--radius-full);
+          border: 1px solid var(--neutral-300);
+          background: #ffffff;
+          color: var(--neutral-600);
+          font-size: 0.82rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .btn-reset-practitioners:hover {
+          background: var(--neutral-100);
+          color: #b91c1c;
+          border-color: #fca5a5;
+        }
+
+        .practitioners-admin-controls {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 16px;
+          margin: 20px 0 24px 0;
+          padding-bottom: 20px;
+          border-bottom: 1px solid var(--neutral-200);
+        }
+        .admin-category-pills {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .admin-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 14px;
+          border-radius: var(--radius-full);
+          font-size: 0.82rem;
+          font-weight: 600;
+          background: var(--neutral-100);
+          color: var(--neutral-700);
+          border: 1px solid var(--neutral-200);
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .admin-pill:hover {
+          background: var(--neutral-200);
+        }
+        .admin-pill.active {
+          background: var(--primary-700);
+          color: #ffffff;
+          border-color: var(--primary-700);
+          box-shadow: 0 2px 8px rgba(127, 125, 49, 0.25);
+        }
+        .admin-pill-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 18px;
+          height: 18px;
+          padding: 0 5px;
+          border-radius: 9px;
+          font-size: 0.7rem;
+          font-weight: 700;
+          background: rgba(0, 0, 0, 0.08);
+          color: inherit;
+        }
+        .admin-pill.active .admin-pill-badge {
+          background: rgba(255, 255, 255, 0.25);
+          color: #ffffff;
+        }
+
+        .admin-search-box {
+          position: relative;
+          display: flex;
+          align-items: center;
+          min-width: 280px;
+          flex: 1;
+          max-width: 420px;
+        }
+        .admin-search-icon {
+          position: absolute;
+          left: 12px;
+          color: var(--neutral-400);
+          pointer-events: none;
+        }
+        .admin-search-input {
+          width: 100%;
+          padding: 9px 36px 9px 38px;
+          border-radius: var(--radius-full);
+          border: 1.5px solid var(--neutral-200);
+          background: #ffffff;
+          font-size: 0.88rem;
+          color: var(--neutral-800);
+          outline: none;
+          transition: all 0.2s ease;
+        }
+        .admin-search-input:focus {
+          border-color: var(--primary-600);
+          box-shadow: 0 0 0 3px rgba(127, 125, 49, 0.12);
+        }
+        .admin-clear-search {
+          position: absolute;
+          right: 12px;
+          background: none;
+          border: none;
+          color: var(--neutral-400);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          padding: 2px;
+        }
+        .admin-clear-search:hover {
+          color: var(--neutral-700);
+        }
+
+        .empty-practitioners-box {
+          text-align: center;
+          padding: 60px 20px;
+          background: var(--neutral-50);
+          border-radius: var(--radius-lg);
+          border: 1.5px dashed var(--neutral-300);
+        }
+        .empty-practitioners-box h4 {
+          font-size: 1.15rem;
+          color: var(--primary-900);
+          margin: 12px 0 6px 0;
+        }
+        .empty-practitioners-box p {
+          color: var(--neutral-500);
+          font-size: 0.88rem;
+          margin-bottom: 16px;
+        }
+
+        /* Practitioners Grid */
+        .admin-practitioners-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+          gap: 20px;
+        }
+        .admin-practitioner-card {
+          background: #ffffff;
+          border: 1px solid var(--neutral-200);
+          border-radius: var(--radius-lg);
+          padding: 20px;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+          transition: all 0.25s ease;
+          position: relative;
+        }
+        .admin-practitioner-card:hover {
+          border-color: rgba(127, 125, 49, 0.4);
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.07);
+          transform: translateY(-2px);
+        }
+        .admin-card-top {
+          display: flex;
+          gap: 16px;
+          align-items: flex-start;
+          margin-bottom: 12px;
+        }
+        .admin-avatar-wrapper {
+          position: relative;
+          width: 72px;
+          height: 72px;
+          flex-shrink: 0;
+        }
+        .admin-avatar-img {
+          width: 72px;
+          height: 72px;
+          border-radius: var(--radius-md);
+          object-fit: cover;
+          border: 1.5px solid var(--neutral-200);
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+        }
+        .admin-avatar-placeholder {
+          width: 72px;
+          height: 72px;
+          border-radius: var(--radius-md);
+          background: linear-gradient(135deg, var(--primary-100) 0%, var(--primary-200) 100%);
+          color: var(--primary-800);
+          font-size: 1.3rem;
+          font-weight: 800;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 1.5px solid rgba(127, 125, 49, 0.25);
+          letter-spacing: 0.05em;
+        }
+        .admin-discipline-chip {
+          position: absolute;
+          bottom: -6px;
+          left: 50%;
+          transform: translateX(-50%);
+          font-size: 0.65rem;
+          font-weight: 800;
+          letter-spacing: 0.06em;
+          padding: 2px 6px;
+          border-radius: var(--radius-full);
+          text-transform: uppercase;
+          white-space: nowrap;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+        }
+        .chip-rmt { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+        .chip-physio { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+        .chip-kinesiology { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+        .chip-mld { background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+
+        .admin-details-col {
+          flex: 1;
+          min-width: 0;
+        }
+        .admin-name-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 2px;
+        }
+        .admin-p-name {
+          font-size: 1.05rem;
+          font-weight: 700;
+          color: var(--primary-900);
+          margin: 0;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .admin-booking-status {
+          font-size: 0.68rem;
+          font-weight: 700;
+          padding: 2px 6px;
+          border-radius: var(--radius-full);
+          white-space: nowrap;
+        }
+        .booking-active { background: #ecfdf5; color: #065f46; }
+        .booking-paused { background: #fef2f2; color: #991b1b; }
+
+        .admin-p-title {
+          font-size: 0.82rem;
+          font-weight: 600;
+          color: var(--primary-700);
+          margin-bottom: 2px;
+        }
+        .admin-p-credentials {
+          font-size: 0.76rem;
+          color: var(--neutral-500);
+          margin-bottom: 4px;
+        }
+        .admin-p-meta {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 0.74rem;
+          color: var(--neutral-600);
+          font-weight: 500;
+        }
+
+        .admin-short-bio {
+          font-size: 0.82rem;
+          color: var(--neutral-600);
+          line-height: 1.45;
+          margin: 0 0 10px 0;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
+        .admin-specialties-tags {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          margin-bottom: 16px;
+        }
+        .admin-specialty-tag {
+          font-size: 0.7rem;
+          font-weight: 600;
+          padding: 2px 7px;
+          border-radius: var(--radius-full);
+          background: var(--neutral-100);
+          color: var(--neutral-700);
+        }
+        .admin-specialty-tag.more {
+          background: transparent;
+          color: var(--primary-700);
+          font-style: italic;
+        }
+
+        .admin-card-footer {
+          margin-top: auto;
+          padding-top: 12px;
+          border-top: 1px solid var(--neutral-200);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+        }
+        .footer-left-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .quick-switch-label {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          user-select: none;
+        }
+        .quick-switch-label input {
+          display: none;
+        }
+        .quick-switch-slider {
+          width: 32px;
+          height: 18px;
+          background: #d1d5db;
+          border-radius: 18px;
+          position: relative;
+          transition: all 0.2s ease;
+        }
+        .quick-switch-slider::before {
+          content: '';
+          position: absolute;
+          width: 14px;
+          height: 14px;
+          left: 2px;
+          top: 2px;
+          background: #ffffff;
+          border-radius: 50%;
+          transition: all 0.2s ease;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .quick-switch-label input:checked + .quick-switch-slider {
+          background: #10b981;
+        }
+        .quick-switch-label input:checked + .quick-switch-slider::before {
+          transform: translateX(14px);
+        }
+        .quick-switch-text {
+          font-size: 0.74rem;
+          font-weight: 600;
+          color: var(--neutral-600);
+        }
+
+        .btn-card-view {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 0.76rem;
+          font-weight: 600;
+          color: var(--neutral-600);
+          padding: 4px 8px;
+          border-radius: var(--radius-sm);
+          text-decoration: none;
+          transition: all 0.2s ease;
+        }
+        .btn-card-view:hover {
+          color: var(--primary-700);
+          background: var(--neutral-100);
+        }
+
+        .footer-right-actions {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .btn-card-edit {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 5px 12px;
+          border-radius: var(--radius-full);
+          font-size: 0.78rem;
+          font-weight: 700;
+          background: var(--primary-50);
+          color: var(--primary-800);
+          border: 1px solid rgba(127, 125, 49, 0.25);
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .btn-card-edit:hover {
+          background: var(--primary-600);
+          color: #ffffff;
+          border-color: var(--primary-600);
+        }
+        .btn-card-delete {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 5px;
+          border-radius: var(--radius-full);
+          background: none;
+          border: none;
+          color: var(--neutral-400);
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .btn-card-delete:hover {
+          color: #b91c1c;
+          background: #fee2e2;
+        }
+
+        /* Modal Styles */
+        .practitioner-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.65);
+          backdrop-filter: blur(4px);
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 24px 16px;
+          overflow-y: auto;
+        }
+        .practitioner-modal-dialog {
+          background: #ffffff;
+          border-radius: var(--radius-xl);
+          width: 100%;
+          max-width: 820px;
+          max-height: 92vh;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
+          border: 1px solid rgba(216, 178, 141, 0.5);
+          overflow: hidden;
+          animation: modalSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes modalSlideUp {
+          from { opacity: 0; transform: translateY(20px) scale(0.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          padding: 20px 24px;
+          background: linear-gradient(135deg, #1b2018 0%, #293025 100%);
+          color: #ffffff;
+          border-bottom: 1px solid rgba(216, 178, 141, 0.3);
+        }
+        .modal-header-left {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+        .modal-header-icon {
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          background: rgba(216, 178, 141, 0.2);
+          color: #d8b28d;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          border: 1px solid rgba(216, 178, 141, 0.4);
+        }
+        .modal-title {
+          font-size: 1.3rem;
+          color: #ffffff;
+          margin: 0 0 4px 0;
+        }
+        .modal-subtitle {
+          font-size: 0.82rem;
+          color: rgba(255, 255, 255, 0.7);
+          margin: 0;
+          line-height: 1.4;
+        }
+        .modal-close-btn {
+          background: none;
+          border: none;
+          color: rgba(255, 255, 255, 0.6);
+          cursor: pointer;
+          padding: 6px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+        }
+        .modal-close-btn:hover {
+          color: #ffffff;
+          background: rgba(255, 255, 255, 0.15);
+        }
+        .modal-form-content {
+          padding: 24px;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          background: var(--neutral-50);
+        }
+        .modal-section-card {
+          background: #ffffff;
+          border: 1px solid var(--neutral-200);
+          border-radius: var(--radius-lg);
+          padding: 18px 20px;
+        }
+        .modal-section-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 0.96rem;
+          font-weight: 700;
+          color: var(--primary-900);
+          margin-bottom: 16px;
+          padding-bottom: 10px;
+          border-bottom: 1.5px solid var(--neutral-100);
+        }
+        .btn-auto-slug {
+          background: none;
+          border: none;
+          color: var(--primary-700);
+          font-size: 0.76rem;
+          font-weight: 700;
+          cursor: pointer;
+          text-decoration: underline;
+        }
+        .photo-manager-layout {
+          display: flex;
+          gap: 20px;
+          align-items: flex-start;
+        }
+        .photo-preview-box {
+          width: 96px;
+          height: 110px;
+          border-radius: var(--radius-md);
+          border: 1.5px dashed var(--neutral-300);
+          background: var(--neutral-100);
+          overflow: hidden;
+          flex-shrink: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .modal-photo-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .modal-photo-placeholder {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+          color: var(--neutral-400);
+          font-size: 0.72rem;
+        }
+        .photo-upload-controls {
+          flex: 1;
+        }
+        .photo-actions-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .btn-upload-photo {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 14px;
+          font-size: 0.82rem;
+          font-weight: 700;
+        }
+        .btn-remove-photo {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 0.78rem;
+          color: #b91c1c;
+          background: none;
+          border: 1px solid #fecaca;
+          padding: 6px 10px;
+          border-radius: var(--radius-full);
+          cursor: pointer;
+        }
+        .photo-status-notice {
+          font-size: 0.78rem;
+          color: var(--primary-800);
+          font-weight: 600;
+          margin-top: 6px;
+        }
+        .tags-chips-container {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-bottom: 8px;
+          min-height: 24px;
+        }
+        .chip-tag {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 4px 10px;
+          border-radius: var(--radius-full);
+          background: var(--primary-100);
+          color: var(--primary-900);
+          font-size: 0.78rem;
+          font-weight: 600;
+        }
+        .chip-remove {
+          background: none;
+          border: none;
+          color: var(--primary-700);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          padding: 1px;
+          border-radius: 50%;
+        }
+        .chip-remove:hover {
+          background: rgba(0, 0, 0, 0.1);
+          color: #b91c1c;
+        }
+        .tag-input-group {
+          display: flex;
+          gap: 8px;
+        }
+        .btn-add-tag {
+          white-space: nowrap;
+          padding: 8px 14px;
+          font-size: 0.82rem;
+          font-weight: 700;
+        }
+        .booking-toggle-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px 0;
+        }
+        .btn-add-treatment-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 5px 12px;
+          border-radius: var(--radius-full);
+          font-size: 0.78rem;
+          font-weight: 700;
+          background: var(--primary-100);
+          color: var(--primary-800);
+          border: 1px solid rgba(127, 125, 49, 0.3);
+          cursor: pointer;
+        }
+        .treatments-editor-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .treatment-editor-card {
+          background: var(--neutral-50);
+          border: 1px solid var(--neutral-200);
+          border-radius: var(--radius-md);
+          padding: 14px;
+        }
+        .treatment-editor-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 10px;
+        }
+        .treatment-idx-badge {
+          font-size: 0.72rem;
+          font-weight: 800;
+          color: var(--primary-800);
+          background: var(--primary-100);
+          padding: 2px 8px;
+          border-radius: var(--radius-full);
+        }
+        .btn-remove-treatment {
+          background: none;
+          border: none;
+          color: var(--neutral-400);
+          cursor: pointer;
+          padding: 3px;
+        }
+        .btn-remove-treatment:hover {
+          color: #b91c1c;
+        }
+        .checkbox-tax-label {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 0.8rem;
+          color: var(--neutral-700);
+          margin-top: 8px;
+          cursor: pointer;
+        }
+        .modal-footer-actions {
+          display: flex;
+          justify-content: flex-end;
+          align-items: center;
+          gap: 12px;
+          padding-top: 14px;
+          border-top: 1px solid var(--neutral-200);
+        }
+        .btn-save-modal {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 22px;
+          font-size: 0.92rem;
+          font-weight: 700;
+        }
+
+        /* Delete Confirmation Dialog */
+        .delete-modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(4px);
+          z-index: 10000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+        }
+        .delete-modal-dialog {
+          background: #ffffff;
+          border-radius: var(--radius-xl);
+          width: 100%;
+          max-width: 440px;
+          padding: 32px 24px;
+          text-align: center;
+          box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
+          border: 1px solid #fee2e2;
+          animation: modalSlideUp 0.2s ease-out;
+        }
+        .delete-modal-icon {
+          width: 60px;
+          height: 60px;
+          border-radius: 50%;
+          background: #fee2e2;
+          color: #b91c1c;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 16px auto;
+        }
+        .delete-modal-title {
+          font-size: 1.3rem;
+          color: #991b1b;
+          margin: 0 0 10px 0;
+        }
+        .delete-modal-text {
+          font-size: 0.88rem;
+          color: var(--neutral-600);
+          line-height: 1.5;
+          margin: 0 0 24px 0;
+        }
+        .delete-modal-actions {
+          display: flex;
+          justify-content: center;
+          gap: 12px;
+        }
+        .btn-danger-delete {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 10px 18px;
+          border-radius: var(--radius-full);
+          font-size: 0.88rem;
+          font-weight: 700;
+          background: #dc2626;
+          color: #ffffff;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .btn-danger-delete:hover {
+          background: #b91c1c;
+          box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+        }
+
         @media (max-width: 768px) {
           .form-row-2, .content-type-selector {
             grid-template-columns: 1fr;
@@ -2761,7 +4677,30 @@ export default function AdminPage() {
             flex-direction: column;
             align-items: stretch;
           }
+          .practitioners-header {
+            flex-direction: column;
+          }
+          .practitioners-admin-controls {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .admin-search-box {
+            max-width: 100%;
+          }
+          .admin-practitioners-grid {
+            grid-template-columns: 1fr;
+          }
+          .photo-manager-layout {
+            flex-direction: column;
+          }
+          .modal-header {
+            padding: 16px;
+          }
+          .modal-form-content {
+            padding: 16px;
+          }
         }
+
       `}</style>
     </div>
   );

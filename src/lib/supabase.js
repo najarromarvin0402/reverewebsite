@@ -172,6 +172,55 @@ export async function saveClinicSettingsToDb(settings) {
 }
 
 /**
+ * Fetch practitioners from Supabase database
+ */
+export async function fetchPractitionersFromDb() {
+  if (!supabase || !isSupabaseConfigured) return null;
+  try {
+    const { data, error } = await supabase
+      .from('clinic_settings')
+      .select('settings')
+      .eq('id', 'practitioners')
+      .maybeSingle();
+
+    if (error) {
+      console.warn('Notice loading practitioners from Supabase:', error.message);
+      return null;
+    }
+    return Array.isArray(data?.settings) ? data.settings : null;
+  } catch (e) {
+    console.warn('Error connecting to Supabase for practitioners:', e);
+    return null;
+  }
+}
+
+/**
+ * Save practitioners list to Supabase database
+ */
+export async function savePractitionersToDb(practitioners) {
+  if (!supabase || !isSupabaseConfigured) return null;
+  try {
+    const { data, error } = await supabase
+      .from('clinic_settings')
+      .upsert({
+        id: 'practitioners',
+        settings: practitioners,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' })
+      .select();
+
+    if (error) {
+      console.error('Error saving practitioners to Supabase:', error);
+      throw error;
+    }
+    return data;
+  } catch (e) {
+    console.error('Failed to upsert practitioners to Supabase:', e);
+    throw e;
+  }
+}
+
+/**
  * Upload a media file (video or image) to Supabase Storage bucket
  * Returns public URL if successful, or null
  */
@@ -204,3 +253,4 @@ export async function uploadMediaToSupabase(file, bucketName = 'promo-media') {
     return null;
   }
 }
+
